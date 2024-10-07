@@ -10,6 +10,12 @@ const handleRefreshToken = async (req, res) => {
     const foundUser = await User.findOne({ refreshToken }).exec();
 
     // Detected refresh token reuse!
+    /** By this point, if this refresh token comes in and we don't find a member,
+     *  it is because this token was already used to refresh successfully. This 
+     *  means that this current refresh token was stolen by a bad actor and is
+     *  trying to be used to get a JWT token. We need de-authenticate the member
+     *  tied to this token so the bad actor can't get a a new access token.
+     */
     if (!foundUser) {
         jwt.verify(
             refreshToken,
@@ -26,6 +32,7 @@ const handleRefreshToken = async (req, res) => {
         return res.sendStatus(403); //Forbidden
     }
 
+    // Remove incoming refresh token from our array, so that it can't be used again.
     const newRefreshTokenArray = foundUser.refreshToken.filter(rt => rt !== refreshToken);
 
     // evaluate jwt 
@@ -35,6 +42,11 @@ const handleRefreshToken = async (req, res) => {
         async (err, decoded) => {
             if (err) {
                 console.log('expired refresh token')
+                /** 
+                 * If the incoming refresh token is expired, 
+                 * make sure we update the refresh token array in our db,
+                 * then exit out of this flow. 
+                */
                 foundUser.refreshToken = [...newRefreshTokenArray];
                 const result = await foundUser.save();
                 console.log(result);
